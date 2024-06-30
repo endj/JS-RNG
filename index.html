@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html>
+<header>
+    <style>
+        * {
+            padding: 0;
+            margin: 0
+        }
+
+        div {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+        }
+    </style>
+</header>
+
+<body>
+    <div>
+        <canvas id="topLeft"></canvas>
+        <canvas id="topRight"></canvas>
+        <canvas id="botLeft"></canvas>
+        <canvas id="botRight"></canvas>
+    </div>
+    <script>
+        class Xorshift {
+            constructor() {
+                this.seed = Date.now();
+            }
+            random() {
+                let x = this.seed;
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                this.seed = x;
+                return (x >>> 0) / 0xFFFFFFFF; // Normalize to [0, 1)
+            }
+        }
+    </script>
+    <script>
+        const MAX_INT = 4294967296.0;
+        const N = 624;
+        const M = 397;
+        const UPPER_MASK = 0x80000000;
+        const LOWER_MASK = 0x7fffffff;
+        const MATRIX_A = 0x9908b0df;
+        class MersenneTwister {
+
+            constructor() {
+                this.mt = new Array(N);
+                this.mti = N + 1;
+                this.seed(new Date().getTime());
+            }
+
+            seed(seed) {
+                this.mt[0] = seed >>> 0;
+                for (this.mti = 1; this.mti < N; this.mti++) {
+                    let s = this.mt[this.mti - 1] ^ (this.mt[this.mti - 1] >>> 30);
+                    this.mt[this.mti] =
+                        (((((s & 0xffff0000) >>> 16) * 1812433253) << 16) + (s & 0x0000ffff) * 1812433253) + this.mti;
+                    this.mt[this.mti] >>>= 0;
+                }
+            }
+
+            int() {
+                let y;
+                const mag01 = [0, MATRIX_A];
+
+                if (this.mti >= N) {
+                    if (this.mti === N + 1) {
+                        this.seed(5489);
+                    }
+
+                    for (let kk = 0; kk < N - M; kk++) {
+                        y = (this.mt[kk] & UPPER_MASK) | (this.mt[kk + 1] & LOWER_MASK);
+                        this.mt[kk] = this.mt[kk + M] ^ (y >>> 1) ^ mag01[y & 1];
+                    }
+
+                    for (let kk = N - M; kk < N - 1; kk++) {
+                        y = (this.mt[kk] & UPPER_MASK) | (this.mt[kk + 1] & LOWER_MASK);
+                        this.mt[kk] = this.mt[kk + (M - N)] ^ (y >>> 1) ^ mag01[y & 1];
+                    }
+
+                    y = (this.mt[N - 1] & UPPER_MASK) | (this.mt[0] & LOWER_MASK);
+                    this.mt[N - 1] = this.mt[M - 1] ^ (y >>> 1) ^ mag01[y & 1];
+                    this.mti = 0;
+                }
+
+                y = this.mt[this.mti++];
+
+                y ^= (y >>> 11);
+                y ^= (y << 7) & 0x9d2c5680;
+                y ^= (y << 15) & 0xefc60000;
+                y ^= (y >>> 18);
+
+                return y >>> 0;
+            }
+
+            rnd() {
+                return this.int() * (1.0 / MAX_INT);
+            }
+        }
+    </script>
+    <script>
+        const canvasTL = document.getElementById("topLeft")
+        canvasTL.width = window.innerWidth / 2;
+        canvasTL.height = window.innerHeight / 2;
+
+        const canvasTR = document.getElementById("topRight")
+        canvasTR.width = window.innerWidth / 2;
+        canvasTR.height = window.innerHeight / 2;
+
+        const canvasBL = document.getElementById("botLeft")
+        canvasBL.width = window.innerWidth / 2;
+        canvasBL.height = window.innerHeight / 2;
+
+        const canvasBr = document.getElementById("botRight");
+        canvasBr.width = window.innerWidth / 2;
+        canvasBr.height = window.innerHeight / 2;
+
+
+        let timeRandom = 0;
+        let timeSecureRandom = 0;
+        let timeMersenne = 0
+        let timXor = 0
+
+        const randomArray = [];
+        const secureRandomArray = [];
+        const mersenneArray = [];
+        const xorArray = []
+
+        for (let i = 0; i < 20_000; i++) {
+            randomArray.push(0)
+            secureRandomArray.push(0)
+            mersenneArray.push(0)
+            xorArray.push(0)
+        }
+
+        const randomTimes = []
+        const secureRndTimes = []
+        const twisterTimes = []
+        const xorTimes = []
+
+        const random = () => {
+            const canvas = document.getElementById("topLeft")
+            const ctx = canvas.getContext("2d");
+
+            const start = performance.now()
+            for (let i = 0; i < 20000; i += 2) {
+                randomArray[i] = Math.random();
+                randomArray[i + 1] = Math.random();
+            }
+            const stop = performance.now()
+            const duration = stop - start;
+            randomTimes.push(duration)
+
+            for (let i = 0; i < 20000; i += 2) {
+                const y = randomArray[i]
+                const x = randomArray[i + 1]
+                ctx.fillRect(canvas.width * x, canvas.height * y, 1, 1)
+            }
+
+            ctx.moveTo(canvas.width, 0)
+            ctx.lineTo(canvas.width, canvas.height)
+            ctx.stroke()
+        }
+
+        const secureRnadom = () => {
+            const canvas = document.getElementById("topRight")
+            const ctx = canvas.getContext("2d");
+
+            const start = performance.now()
+            for (let i = 0; i < 20000; i += 2) {
+                secureRandomArray[i] = window.crypto.getRandomValues(new Uint32Array(1))[0] / 0x100000000;
+                secureRandomArray[i + 1] = window.crypto.getRandomValues(new Uint32Array(1))[0] / 0x100000000;
+            }
+            const stop = performance.now()
+            const duration = stop - start;
+
+            secureRndTimes.push(duration)
+
+
+            for (let i = 0; i < 20000; i += 2) {
+                const y = secureRandomArray[i]
+                const x = secureRandomArray[i + 1]
+                ctx.fillRect(canvas.width * x, canvas.height * y, 1, 1)
+            }
+        }
+
+        const twister = () => {
+            const canvas = document.getElementById("botLeft")
+            const ctx = canvas.getContext("2d");
+            const twister = new MersenneTwister()
+
+            const start = performance.now()
+            for (let i = 0; i < 20000; i += 2) {
+                mersenneArray[i] = twister.rnd();
+                mersenneArray[i + 1] = twister.rnd();
+            }
+            const stop = performance.now()
+            const duration = stop - start;
+
+            twisterTimes.push(duration)
+
+
+            for (let i = 0; i < 20000; i += 2) {
+                const y = mersenneArray[i]
+                const x = mersenneArray[i + 1]
+                ctx.fillRect(canvas.width * x, canvas.height * y, 1, 1)
+            }
+        }
+
+        const xorRandom = () => {
+            const canvas = document.getElementById("botRight")
+            const ctx = canvas.getContext("2d");
+            const xor = new Xorshift(new Date())
+
+            const start = performance.now()
+            for (let i = 0; i < 20000; i += 2) {
+                xorArray[i] = xor.random();
+                xorArray[i + 1] = xor.random();
+            }
+            const stop = performance.now()
+            const duration = stop - start;
+
+            xorTimes.push(duration)
+
+
+            for (let i = 0; i < 20000; i += 2) {
+                const y = xorArray[i]
+                const x = xorArray[i + 1]
+                ctx.fillRect(canvas.width * x, canvas.height * y, 1, 1)
+            }
+        }
+
+        const tick = (i) => {
+            if (i < 0) {
+                let randomT = 0, secureT = 0, twisterT = 0, xorT = 0;
+
+                randomTimes.forEach(t => randomT += t);
+                secureRndTimes.forEach(t => secureT += t);
+                twisterTimes.forEach(t => twisterT += t);
+                xorTimes.forEach(t => xorT += t)
+
+                const randomAvg = randomT / randomTimes.length;
+                const secureAvg = secureT / secureRndTimes.length;
+                const twisterAvg = twisterT / twisterTimes.length;
+                const xorAvg = xorT / xorTimes.length;
+
+                const result = `
+                avg unsecure:     ${randomT / randomTimes.length}ms
+                avg secure:      ${secureT / secureRndTimes.length}ms
+                avg twister:  ${twisterT / twisterTimes.length}ms
+                avg xor:              ${xorT / xorTimes.length}ms`
+                alert(result)
+                console.table([
+                    ["random", "secureRandom", "twister", "xor"],
+                    [randomAvg, secureAvg, twisterAvg, xorAvg]
+                ])
+                return;
+            }
+            secureRnadom()
+            random()
+            twister()
+            xorRandom()
+            requestAnimationFrame(() => tick(i - 1))
+        }
+        tick(170)
+    </script>
+</body>
+
+</html>
